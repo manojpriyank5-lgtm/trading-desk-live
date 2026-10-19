@@ -59,7 +59,7 @@ td{padding:9px 8px;border-bottom:1px solid #161d28;vertical-align:top}tr:last-ch
 <header><div><h1>Trading Desk <span class="mut">· live paper account</span></h1><div class="sub" id="gen">connecting…</div></div><div style="display:flex;gap:10px;align-items:center"><span class="live" id="livebadge"><i></i>LIVE</span><div class="badge">PAPER ONLY · NO REAL ORDERS</div></div></header>
 <div class="grid g4" id="kpis"></div>
 <div class="card" style="margin-top:14px"><h2>Open positions · floating P&amp;L, tick by tick</h2><div id="pos"></div></div>
-<div class="grid g2" style="margin-top:14px"><div class="card"><h2>Desk activity · all six bots</h2><div id="chips" style="margin-bottom:10px"></div><div id="upd" style="max-height:460px;overflow:auto"></div></div>
+<div class="grid g2" style="margin-top:14px"><div class="card"><h2>Desk activity · all bots + MicroScanner</h2><div id="chips" style="margin-bottom:10px"></div><div id="upd" style="max-height:460px;overflow:auto"></div></div>
 <div class="card"><h2>Session scoreboard</h2><div id="sess"></div><h2 style="margin-top:18px">Last scans</h2><div id="scans"></div></div></div>
 <div class="card" style="margin-top:14px"><h2>Balance history</h2><div id="chart"></div></div>
 <div class="card feed" style="margin-top:14px"><h2>Trade feed · full decision chain</h2><div id="feed"></div></div>
@@ -72,8 +72,8 @@ const sg=n=>(n>=0?'+':'')+money(n);
 const names={ASIA:'Asian · Tokyo open',LONDON:'London',NY:'New York'};
 const tag=v=>{const k=String(v||'').toUpperCase().match(/PASS|KILL|SHRINK|BUY|SKIP|WAIT|OPEN/);return `<span class="pill ${k?k[0]:'NA'}">${esc(v||'–')}</span>`};
 let BASE=null,lastFetch=0,TK={};
-async function overlay(D){let tot=0;for(const t of D.open){if(t.ticker!=='BTCUSD'){if(t.pnl_live!=null)tot+=t.pnl_live;continue}
- try{const r=await fetch('https://api.coinbase.com/v2/prices/BTC-USD/spot',{cache:'no-store'});const p=parseFloat((await r.json()).data.amount);
+async function overlay(D){let tot=0;const CB={BTCUSD:'BTC-USD',ETHUSD:'ETH-USD'};for(const t of D.open){const pid=CB[String(t.ticker||'').toUpperCase()];if(!pid){if(t.pnl_live!=null)tot+=t.pnl_live;continue}
+ try{const r=await fetch('https://api.coinbase.com/v2/prices/'+pid+'/spot',{cache:'no-store'});const p=parseFloat((await r.json()).data.amount);
  const e=parseFloat(t.entry),sz=parseFloat(t.size),sign=(t.side||'').toLowerCase()==='short'?-1:1;
  const b=TK[t.tag]=(TK[t.tag]||(t.ticks||[]).slice(-300));b.push([Date.now()/1000,p]);if(b.length>300)b.shift();
  t.ticks=b;t.live_price=p;t.live_src='Coinbase public spot (live in your browser)';t.pnl_live=sz*(p-e)/e*sign;t.pnl_pct=Math.round((p-e)/e*100*sign*1000)/1000;
@@ -94,9 +94,9 @@ function render(D){
   const prog=t.progress!=null?`<div class="rng"><i style="left:calc(${t.progress}% - 2px)"></i></div><div class="sub" style="display:flex;justify-content:space-between"><span>Stop ${esc(t.stop)}</span><span>Entry ${esc(t.entry)}</span><span>Target ${esc(t.target)}</span></div>`:'';
   return `<div class="pos-card ${fl}"><div class="pos-top"><div><b style="font-size:16px">${esc(t.ticker)}</b> <span class="mut">${esc(t.side)} · ${esc(t.tag)} · size $${esc(t.size)}</span> <span class="pill ses">${esc(t.session)}</span></div>
   <div style="text-align:right">${has?`<div class="pnlbig pl ${cls(t.pnl_live)}">${t.pnl_live>=0?'+':'-'}$${Math.abs(t.pnl_live).toFixed(4)}</div><div class="sub">${t.pnl_pct>=0?'+':''}${t.pnl_pct}% · now ${t.live_price.toLocaleString(undefined,{maximumFractionDigits:5})} · ${esc(t.live_src)}</div>`:'<div class="sub">no live price right now (market closed or feed unavailable)</div>'}</div></div>${spark}${prog}
-  <div class="sub" style="margin-top:6px">Opened by Chief · max loss at stop ${t.risk!=null?money(t.risk):'–'} · opened ${esc(t.date)}</div></div>`}).join(''):'<div class="empty">No open paper trades right now.</div>';
+  <div class="sub" style="margin-top:6px">Opened by ${/MicroScanner/.test(t.note||'')?'MicroScanner (auto, micro-momentum)':'Chief'} · max loss at stop ${t.risk!=null?money(t.risk):'–'} · opened ${esc(t.date)}</div></div>`}).join(''):'<div class="empty">No open paper trades right now.</div>';
  ACT=D.activity;const uk=JSON.stringify([ACT,FILT]);if(uk!==updKey){updKey=uk;
- const bots=['All','Scout','News','Sentiment','Charts','Skeptic','Chief'];const cnt=b=>b=='All'?ACT.length:ACT.filter(a=>a.bot==b).length;
+ const bots=['All','Scout','News','Sentiment','Charts','Skeptic','Chief','MicroScanner'];const cnt=b=>b=='All'?ACT.length:ACT.filter(a=>a.bot==b).length;
  $('chips').innerHTML=bots.map(b=>`<span onclick="FILT='${b}';updKey='';render(LAST)" style="cursor:pointer;display:inline-block;margin:0 6px 6px 0;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700;border:1px solid ${FILT==b?'var(--b)':'var(--line)'};color:${FILT==b?'var(--b)':'var(--mut)'}">${b} ${cnt(b)}</span>`).join('');
  const L=ACT.filter(a=>FILT=='All'||a.bot==FILT);
  $('upd').innerHTML=L.length?L.map(u=>`<div class="upd ${esc((u.type||'').toUpperCase())}"><div class="sub"><b>${esc(u.bot)}</b> · ${esc(u.type||'NOTE')} ${u.tag?'· '+esc(u.tag):''} · ${esc(u.time_utc)} UTC</div><div>${esc(u.text)}</div></div>`).join(''):'<div class="empty">Nothing from this bot yet. Bots log here when they act.</div>'}
